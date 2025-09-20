@@ -77,6 +77,35 @@ class QEmitSidebarProvider implements vscode.WebviewViewProvider {
 
 					break;
 				}
+
+				case 'deleteCredential': {
+					const { brokerHost } = message;
+  					if (!brokerHost) { break; } // <— silently ignore when nothing selected
+
+					// Load saved credentials
+					const savedCreds: Array<{ username: string; brokerHost: string }> =
+						this.context.globalState.get('savedCredentials', []);
+
+					const nextCreds = savedCreds.filter(c => c.brokerHost !== brokerHost);
+
+					if (nextCreds.length === savedCreds.length) {
+						vscode.window.showWarningMessage(`No saved credentials found for ${brokerHost}.`);
+						break;
+					}
+
+					await this.context.globalState.update('savedCredentials', nextCreds);
+					try {
+						await this.context.secrets.delete(`password_${brokerHost}`);
+					} catch {
+						// ignore secret deletion errors; proceed
+					}
+					
+					vscode.window.showInformationMessage('Deleted credentials for ' + brokerHost);
+
+					// Refresh the webview dropdown/state
+					this.sendSavedCredentials(webviewView);
+					break;
+				}
 			}
 		});
 	}
@@ -100,258 +129,298 @@ class QEmitSidebarProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private getHtml(webview: vscode.Webview): string {
-		// ... updated HTML below
-		return `
-		<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8" />
-			<style>
-			/* Your existing styles here */
-			body {
-				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-				background-color: #1e1e1e;
-				color: #cccccc;
-				padding: 20px;
-				margin: 0;
-			}
-			h3 {
-				font-weight: 600;
-				color: #007acc;
-				margin-bottom: 20px;
-			}
-			.form-group {
-				margin-bottom: 15px;
-			}
-			label {
-				display: block;
-				margin-bottom: 5px;
-				font-size: 0.9rem;
-				color: #a0a0a0;
-			}
-			input[type="text"],
-			input[type="password"],
-			select {
-				width: 100%;
-				padding: 10px 12px;
-				border: 1px solid #3c3c3c;
-				border-radius: 4px;
-				background-color: #252526;
-				color: #cccccc;
-				font-size: 1rem;
-				box-sizing: border-box;
-				transition: border-color 0.2s ease;
-			}
-			input[type="text"]:focus,
-			input[type="password"]:focus,
-			select:focus {
-				outline: none;
-				border-color: #007acc;
-				background-color: #1e1e1e;
-			}
-			button {
-				width: 100%;
-				padding: 12px;
-				font-size: 1rem;
-				font-weight: 600;
-				color: white;
-				background-color: #007acc;
-				border: none;
-				border-radius: 4px;
-				cursor: pointer;
-				transition: background-color 0.3s ease;
-				margin-top: 10px;
-			}
-			button:hover {
-				background-color: #005a9e;
-			}
-			button:active {
-				background-color: #003f6f;
-			}
-			#addCredentialForm {
-				display: none;
-				margin-top: 20px;
-				border-top: 1px solid #3c3c3c;
-				padding-top: 20px;
-			}
-			</style>
-		</head>
-		<body>
-			<h3>Publish File via AMQP</h3>
+private getHtml(webview: vscode.Webview): string {
+  const nonce = `${Date.now()}${Math.random().toString(36).slice(2)}`;
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none';
+                   img-src ${webview.cspSource} https:;
+                   style-src ${webview.cspSource} 'unsafe-inline';
+                   script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root{
+        --bg:#1e1e1e;
+        --bg-elev:#1b1b1b;
+        --text:#cccccc;
+        --muted:#a0a0a0;
+        --border:#2b2b2b;
+        --border-strong:#3c3c3c;
+        --accent:#007acc;
+      }
+      *{box-sizing:border-box}
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+        padding: 20px;
+        margin: 0;
+      }
+      h3 { font-weight: 600; color: var(--accent); margin: 0 0 16px; }
 
-			<button id="showAddCredentials">Add Credentials</button>
+      /* Card styles for the Add Credentials section */
+      .card {
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+        box-shadow: 0 1px 0 rgba(0,0,0,.3), 0 10px 24px rgba(0,0,0,.18);
+      }
+      .card h4 {
+        margin: 0 0 12px;
+        font-weight: 600;
+        color: #d6d6d6;
+        letter-spacing:.2px;
+      }
 
-			<!-- Add Credentials Form -->
-			<div id="addCredentialForm">
-				<h4>Add New Credentials</h4>
-				<div class="form-group">
-					<label for="newUsername">Username</label>
-					<input id="newUsername" type="text" placeholder="Username" />
-				</div>
+      .form-group { margin-bottom: 12px; }
+      label { display:block; margin-bottom:6px; font-size:.9rem; color:var(--muted); }
+      input[type="text"], input[type="password"], select {
+        width:100%; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px;
+        background:#252526; color:var(--text); font-size:1rem; transition:border-color .2s ease;
+      }
+      input[type="text"]:focus, input[type="password"]:focus, select:focus {
+        outline:none; border-color: var(--accent); background:#1e1e1e;
+      }
 
-				<div class="form-group">
-					<label for="newPassword">Password</label>
-					<input id="newPassword" type="password" placeholder="Password" />
-				</div>
+      button {
+        width:100%; padding:12px; font-size:1rem; font-weight:600; color:#fff;
+        background: var(--accent); border:none; border-radius:8px; cursor:pointer;
+        transition:transform .04s ease, background-color .3s ease; margin-top:10px;
+      }
+      button:hover { background:#005a9e; }
+      button:active { transform: translateY(1px); }
 
-				<div class="form-group">
-					<label for="newBrokerHost">Broker Host</label>
-					<input id="newBrokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
-				</div>
+      /* Danger variant for delete */
+      button.danger { background:#c42b1c; }
+      button.danger:hover { background:#a5261a; }
+      button.danger:active { background:#7f1d13; }
 
-				<button id="saveCredential">Save Credentials</button>
-			</div>
+      /* Divider line shown under the Add Credentials card */
+      .section-divider{
+        height:1px;
+        margin:14px 0 18px;
+        background: linear-gradient(90deg, transparent, #3f3f3f, transparent);
+        border:0;
+      }
 
-			<!-- Main Publish Form -->
-			<div id="publishForm" style="margin-top: 20px;">
-				<div class="form-group">
-					<label for="username">Username</label>
-					<input id="username" type="text" placeholder="Username" />
-				</div>
+      /* Container spacing so things breathe a bit */
+      .block { margin-top:18px; }
+    </style>
+  </head>
+  <body>
+    <h3>Publish File via AMQP</h3>
 
-				<div class="form-group">
-					<label for="password">Password</label>
-					<input id="password" type="password" placeholder="Password" />
-				</div>
+    <button id="showAddCredentials" type="button">Add Credentials</button>
 
-				<div class="form-group" id="brokerHostContainer">
-					<label for="brokerHost">Broker Host</label>
-					<input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
-				</div>
+    <!-- Add Credentials: hidden by default, styled as card -->
+    <div id="addCredentialForm" class="card block" style="display:none;">
+      <h4>Add New Credentials</h4>
+      <div class="form-group">
+        <label for="newUsername">Username</label>
+        <input id="newUsername" type="text" placeholder="Username" />
+      </div>
+      <div class="form-group">
+        <label for="newPassword">Password</label>
+        <input id="newPassword" type="password" placeholder="Password" />
+      </div>
+      <div class="form-group">
+        <label for="newBrokerHost">Broker Host</label>
+        <input id="newBrokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+      </div>
+      <button id="saveCredential" type="button">Save Credentials</button>
+    </div>
 
-				<div class="form-group">
-					<label for="topic">Topic</label>
-					<input id="topic" type="text" placeholder="Topic (e.g. my.queue)" value="queue://test" />
-				</div>
+    <!-- This subtle divider appears only when the card is visible -->
+    <div id="addDivider" class="section-divider" style="display:none;"></div>
 
-				<button id="publish">Publish</button>
-			</div>
+    <div id="publishForm" class="block">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input id="username" type="text" placeholder="Username" />
+      </div>
 
-			<script>
-				const vscode = acquireVsCodeApi();
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input id="password" type="password" placeholder="Password" />
+      </div>
 
-				const addCredentialForm = document.getElementById('addCredentialForm');
-				const showAddBtn = document.getElementById('showAddCredentials');
-				const saveCredentialBtn = document.getElementById('saveCredential');
-				const brokerHostContainer = document.getElementById('brokerHostContainer');
+      <div class="form-group" id="brokerHostContainer">
+        <label for="brokerHost">Broker Host</label>
+        <input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+      </div>
 
-				let savedCredentials = [];
+      <!-- Full-width red delete button -->
+      <button id="deleteCredential" class="danger" type="button">Delete Selected</button>
 
-				showAddBtn.addEventListener('click', () => {
-					// Toggle form visibility
-					if (addCredentialForm.style.display === 'none') {
-						addCredentialForm.style.display = 'block';
-					} else {
-						addCredentialForm.style.display = 'none';
-					}
-				});
+      <div class="form-group block">
+        <label for="topic">Topic</label>
+        <input id="topic" type="text" placeholder="Topic (e.g. my.queue)" value="queue://test" />
+      </div>
 
-				saveCredentialBtn.addEventListener('click', () => {
-					const newUsername = document.getElementById('newUsername').value.trim();
-					const newPassword = document.getElementById('newPassword').value;
-					const newBrokerHost = document.getElementById('newBrokerHost').value.trim();
+      <button id="publish" type="button">Publish</button>
+    </div>
 
-					if (!newUsername || !newPassword || !newBrokerHost) {
-						alert('Please fill all fields');
-						return;
-					}
+    <script nonce="${nonce}">
+      const vscode = acquireVsCodeApi();
 
-					vscode.postMessage({
-						command: 'addCredential',
-						username: newUsername,
-						password: newPassword,
-						brokerHost: newBrokerHost
-					});
+      const addCredentialForm = document.getElementById('addCredentialForm');
+      const addDivider = document.getElementById('addDivider');
+      const showAddBtn = document.getElementById('showAddCredentials');
+      const saveCredentialBtn = document.getElementById('saveCredential');
+      const brokerHostContainer = document.getElementById('brokerHostContainer');
+      const deleteBtn = document.getElementById('deleteCredential');
 
-					// Clear form and hide
-					document.getElementById('newUsername').value = '';
-					document.getElementById('newPassword').value = '';
-					document.getElementById('newBrokerHost').value = '';
-					addCredentialForm.style.display = 'none';
-				});
+      let savedCredentials = [];
+      const persisted = vscode.getState() || {};
+      let selectedBrokerHost = persisted.selectedBrokerHost || '';
 
-				function createBrokerDropdown(credentials) {
-					const select = document.createElement('select');
-					select.id = 'brokerHost';
+      // --- Helpers -----------------------------------------------------------
+      function renderBrokerHostInput() {
+        brokerHostContainer.innerHTML = \`
+          <label for="brokerHost">Broker Host</label>
+          <input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+        \`;
+      }
 
-					const defaultOption = document.createElement('option');
-					defaultOption.value = '';
-					defaultOption.textContent = '-- Select Broker --';
-					select.appendChild(defaultOption);
+      function populateCredFieldsFrom(host) {
+        const cred = savedCredentials.find(c => c.brokerHost === host);
+        document.getElementById('username').value = cred?.username || '';
+        document.getElementById('password').value = cred?.password || '';
+      }
 
-					credentials.forEach(({ brokerHost }) => {
-						const option = document.createElement('option');
-						option.value = brokerHost;
-						option.textContent = brokerHost;
-						select.appendChild(option);
-					});
+      function createBrokerDropdown(credentials) {
+        const select = document.createElement('select');
+        select.id = 'brokerHost';
 
-					select.addEventListener('change', () => {
-						const selectedHost = select.value;
-						if (!selectedHost) {
-							// Reset username and password if none selected
-							document.getElementById('username').value = '';
-							document.getElementById('password').value = '';
-							return;
-						}
-						const cred = savedCredentials.find(c => c.brokerHost === selectedHost);
-						if (cred) {
-							document.getElementById('username').value = cred.username;
-							document.getElementById('password').value = cred.password;
-						}
-					});
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '-- Select Broker --';
+        select.appendChild(defaultOption);
 
-					return select;
-				}
+        credentials.forEach(({ brokerHost }) => {
+          const option = document.createElement('option');
+          option.value = brokerHost;
+          option.textContent = brokerHost;
+          select.appendChild(option);
+        });
 
-				// Handle incoming messages from extension
-				window.addEventListener('message', event => {
-					const message = event.data;
-					if (message.command === 'loadSavedCredentials') {
-						savedCredentials = message.credentials;
+        if (selectedBrokerHost && credentials.some(c => c.brokerHost === selectedBrokerHost)) {
+          select.value = selectedBrokerHost;
+          populateCredFieldsFrom(selectedBrokerHost);
+        }
 
-						if (savedCredentials.length) {
-							// Replace brokerHost input with dropdown
-							const container = brokerHostContainer;
-							container.innerHTML = '<label for="brokerHost">Broker Host</label>';
-							const select = createBrokerDropdown(savedCredentials);
-							container.appendChild(select);
-						} else {
-							// No saved credentials, keep input field
-							brokerHostContainer.innerHTML = \`
-								<label for="brokerHost">Broker Host</label>
-								<input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
-							\`;
-						}
-					}
-				});
+        select.addEventListener('change', () => {
+          selectedBrokerHost = select.value;
+          vscode.setState({ ...(vscode.getState()||{}), selectedBrokerHost });
+          if (!selectedBrokerHost) {
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            return;
+          }
+          populateCredFieldsFrom(selectedBrokerHost);
+        });
 
-				document.getElementById('publish').addEventListener('click', () => {
-					const username = document.getElementById('username').value;
-					const password = document.getElementById('password').value;
-					let brokerHostElem = document.getElementById('brokerHost');
-					const brokerHost = brokerHostElem ? brokerHostElem.value : '';
-					const topic = document.getElementById('topic').value;
+        return select;
+      }
 
-					if (!username || !password || !brokerHost) {
-						alert('Please fill username, password, and broker host');
-						return;
-					}
+      function renderBrokerSelectorFrom(creds) {
+        if (Array.isArray(creds) && creds.length > 0) {
+          brokerHostContainer.innerHTML = '<label for="brokerHost">Broker Host</label>';
+          brokerHostContainer.appendChild(createBrokerDropdown(creds));
+        } else {
+          selectedBrokerHost = '';
+          vscode.setState({ ...(vscode.getState()||{}), selectedBrokerHost });
+          renderBrokerHostInput();
+        }
+      }
 
-					vscode.postMessage({
-						command: 'publish',
-						username,
-						password,
-						brokerHost,
-						topic
-					});
-				});
-			</script>
-		</body>
-		</html>
-		`;
-	}
+      // --- UI events ---------------------------------------------------------
+      showAddBtn.addEventListener('click', () => {
+        const isHidden = getComputedStyle(addCredentialForm).display === 'none';
+        addCredentialForm.style.display = isHidden ? 'block' : 'none';
+        addDivider.style.display = isHidden ? 'block' : 'none';
+      });
+
+      saveCredentialBtn.addEventListener('click', () => {
+        const newUsername = document.getElementById('newUsername').value.trim();
+        const newPassword = document.getElementById('newPassword').value;
+        const newBrokerHost = document.getElementById('newBrokerHost').value.trim();
+
+        if (!newUsername || !newPassword || !newBrokerHost) return;
+
+        vscode.postMessage({
+          command: 'addCredential',
+          username: newUsername,
+          password: newPassword,
+          brokerHost: newBrokerHost
+        });
+
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('newBrokerHost').value = '';
+        addCredentialForm.style.display = 'none';
+        addDivider.style.display = 'none';
+      });
+
+      // Always enabled: try to delete; if no selection, silently do nothing
+      deleteBtn.addEventListener('click', () => {
+        const select = document.getElementById('brokerHost');
+        const selectedHost = select && select.tagName === 'SELECT' ? select.value : '';
+        if (!selectedHost) return;
+        vscode.postMessage({ command: 'deleteCredential', brokerHost: selectedHost });
+      });
+
+      document.getElementById('publish').addEventListener('click', () => {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const brokerHostElem = document.getElementById('brokerHost');
+        const brokerHost = brokerHostElem ? brokerHostElem.value : '';
+        const topic = document.getElementById('topic').value;
+        if (!username || !password || !brokerHost) return;
+        vscode.postMessage({ command: 'publish', username, password, brokerHost, topic });
+      });
+
+      // --- State restoration -------------------------------------------------
+      const state = vscode.getState() || {};
+      if (Array.isArray(state.credentials)) {
+        savedCredentials = state.credentials;
+        renderBrokerSelectorFrom(savedCredentials);
+      } else {
+        renderBrokerHostInput();
+      }
+
+      window.addEventListener('message', event => {
+        const message = event.data;
+        if (message.command === 'loadSavedCredentials') {
+          savedCredentials = Array.isArray(message.credentials) ? message.credentials : [];
+          if (!savedCredentials.find(c => c.brokerHost === selectedBrokerHost)) {
+            selectedBrokerHost = '';
+          }
+          vscode.setState({ credentials: savedCredentials, selectedBrokerHost });
+          renderBrokerSelectorFrom(savedCredentials);
+
+          const select = document.getElementById('brokerHost');
+          if (select && select.tagName === 'SELECT' && !savedCredentials.find(c => c.brokerHost === select.value)) {
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            select.value = '';
+          }
+        }
+      });
+    </script>
+  </body>
+  </html>
+  `;
+}
+
+
+
+
 }
 
 

@@ -1,7 +1,13 @@
 {
   "name": "qemit",
   "displayName": "qemit",
+  "publisher": "fluctuationqt",
   "description": "Publish Messages to Brokers easitly",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fluctuationqt/qemit.git"
+  },
+  "license": "GPL-3.0-or-later",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.104.0"

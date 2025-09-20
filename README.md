@@ -1,71 +1,56 @@
-# qemit README
+# qemit — VS Code → AMQP (1.0) one-click publisher
 
-This is the README for your extension "qemit". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+Publish the contents of your current editor to an AMQP 1.0 broker straight from a tidy VS Code sidebar. Save multiple broker credentials securely, switch between them in a dropdown, and fire messages without leaving your editor.
 
 ---
 
-## Following extension guidelines
+## ✨ Features
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+- **Sidebar UI** (Webview) to publish the *active editor’s* text to an AMQP topic/address  
+- **Multiple brokers + credentials** saved and selectable from a dropdown  
+- **Secure secrets storage** via `context.secrets` (passwords aren’t stored in plaintext)  
+- **AMQP 1.0** publishing using [`rhea`](https://github.com/amqp/rhea)  
+- **TLS support** (`amqps://`); automatic default ports (`5671` for TLS, `5672` otherwise)  
+- **Nice-to-have UX**: add/delete credentials, minimal dark UI, safe CSP with nonce
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+---
 
-## Working with Markdown
+## 🚀 Quick start
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+1. **Launch the extension**
+   - You’ll see the **QEmit** sidebar view (id: `qemitForm`).  
+     If you don’t, open *View → Appearance → Primary Side Bar*, then search for the view by name or id.
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+2. **Add credentials**
+   - In the sidebar, click **Add Credentials**.
+   - Fill in:
+     - **Username**
+     - **Password**
+     - **Broker Host** (e.g. `amqps://broker.example.com:5671` or `amqp://localhost:5672`)
+   - Save. The broker appears in the dropdown.
 
-## For more information
+3. **Publish**
+   - Open the file you want to publish (it must be the *active editor*).
+   - Select a saved broker (or type a host if you have none saved).
+   - Enter **Topic** / **Address** (e.g. `queue://test`).
+   - Click **Publish**.  
+     You’ll get a toast on success, or a readable error if something fails.
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+---
 
-**Enjoy!**
+## 🔧 Configuration & behavior
+
+### Broker URL
+- **TLS:** `amqps://host[:port]` → uses `transport: "tls"`, sends `username/password`.
+- **Non-TLS:** `amqp://host[:port]` → connects without TLS.  
+  > Note: in the current implementation, non-TLS connections **do not** send `username/password` (the fields are commented out in code). Ensure your broker allows that or use TLS.
+
+### Topic / Address
+- Passed directly to `rhea` as the sender address:  
+  `sender = connection.open_sender(<topicOrAddress>)`  
+- Examples: `queue://test`, `orders`, `/amq/queue/foo` — use the addressing scheme your broker expects.
+
+### What gets sent?
+- **Exactly the full text** of the active editor as the AMQP message **body**.
+- No custom headers/properties are attached.
+
