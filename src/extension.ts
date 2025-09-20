@@ -27,154 +27,333 @@ class QEmitSidebarProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.options = { enableScripts: true };
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 
-		webviewView.webview.onDidReceiveMessage(async (message) => {
-			if (message.command === 'publish') {
-				const { username, password, brokerHost, topic } = message;
+		// On load, send saved brokers and selected broker to webview
+		this.sendSavedCredentials(webviewView);
 
-				const editor = vscode.window.activeTextEditor;
-				if (!editor) {
-					vscode.window.showErrorMessage('No active editor with a file open.');
-					return;
+		webviewView.webview.onDidReceiveMessage(async (message) => {
+			switch (message.command) {
+				case 'publish': {
+					const { username, password, brokerHost, topic } = message;
+
+					const editor = vscode.window.activeTextEditor;
+					if (!editor) {
+						vscode.window.showErrorMessage('No active editor with a file open.');
+						return;
+					}
+
+					const fileContent = editor.document.getText();
+
+					try {
+						await sendViaAmqp(username, password, brokerHost, topic, fileContent);
+						vscode.window.showInformationMessage(`Published to topic: ${topic}`);
+					} catch (err: any) {
+						vscode.window.showErrorMessage(`Failed to publish: ${err.message || JSON.stringify(err)}`);
+					}
+					break;
 				}
 
-				const fileContent = editor.document.getText();
+				case 'addCredential': {
+					const { username, password, brokerHost } = message;
 
-				try {
-					await sendViaAmqp(username, password, brokerHost, topic, fileContent);
-					vscode.window.showInformationMessage(`Published to topic: ${topic}`);
-				} catch (err: any) {
-					vscode.window.showErrorMessage(`Failed to publish: ${err.message || JSON.stringify(err)}`);
+					// Load saved credentials list or empty array
+					const savedCreds: Array<{ username: string; brokerHost: string }> =
+						this.context.globalState.get('savedCredentials', []);
+
+					// Check if brokerHost already exists (to prevent duplicates)
+					if (savedCreds.find(c => c.brokerHost === brokerHost)) {
+						vscode.window.showWarningMessage(`Broker ${brokerHost} already saved.`);
+						break;
+					}
+
+					// Add new credential (password stored securely)
+					savedCreds.push({ username, brokerHost });
+					await this.context.globalState.update('savedCredentials', savedCreds);
+					await this.context.secrets.store(`password_${brokerHost}`, password);
+
+					vscode.window.showInformationMessage(`Saved credentials for ${brokerHost}`);
+
+					// Send updated credentials list to webview to update dropdown
+					this.sendSavedCredentials(webviewView);
+
+					break;
 				}
 			}
 		});
 	}
 
-	private getHtml(_webview: vscode.Webview): string {
-	return `
-	<!DOCTYPE html>
-	<html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<style>
-		/* Reset and base */
-		body {
-			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-			background-color: #1e1e1e;
-			color: #cccccc;
-			padding: 20px;
-			margin: 0;
-		}
+	async sendSavedCredentials(webviewView: vscode.WebviewView) {
+		const savedCreds: Array<{ username: string; brokerHost: string }> =
+			this.context.globalState.get('savedCredentials', []);
 
-		h3 {
-			font-weight: 600;
-			color: #007acc;
-			margin-bottom: 20px;
-		}
+		// Retrieve passwords securely
+		const credsWithPasswords = await Promise.all(
+			savedCreds.map(async (c) => ({
+				username: c.username,
+				brokerHost: c.brokerHost,
+				password: await this.context.secrets.get(`password_${c.brokerHost}`) || ''
+			}))
+		);
 
-		/* Container */
-		.form-group {
-			margin-bottom: 15px;
-		}
-
-		label {
-			display: block;
-			margin-bottom: 5px;
-			font-size: 0.9rem;
-			color: #a0a0a0;
-		}
-
-		input[type="text"],
-		input[type="password"] {
-			width: 100%;
-			padding: 10px 12px;
-			border: 1px solid #3c3c3c;
-			border-radius: 4px;
-			background-color: #252526;
-			color: #cccccc;
-			font-size: 1rem;
-			box-sizing: border-box;
-			transition: border-color 0.2s ease;
-		}
-
-		input[type="text"]:focus,
-		input[type="password"]:focus {
-			outline: none;
-			border-color: #007acc;
-			background-color: #1e1e1e;
-		}
-
-		button {
-			width: 100%;
-			padding: 12px;
-			font-size: 1rem;
-			font-weight: 600;
-			color: white;
-			background-color: #007acc;
-			border: none;
-			border-radius: 4px;
-			cursor: pointer;
-			transition: background-color 0.3s ease;
-			margin-top: 10px;
-		}
-
-		button:hover {
-			background-color: #005a9e;
-		}
-
-		button:active {
-			background-color: #003f6f;
-		}
-		</style>
-	</head>
-	<body>
-		<h3>Publish File via AMQP</h3>
-
-		<div class="form-group">
-		<label for="username">Username</label>
-		<input id="username" type="text" placeholder="Username" value="admin" />
-		</div>
-
-		<div class="form-group">
-		<label for="password">Password</label>
-		<input id="password" type="password" placeholder="Password" value="admin" />
-		</div>
-
-		<div class="form-group">
-		<label for="brokerHost">Broker Host</label>
-		<input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" value="amqp://localhost:5672" />
-		</div>
-
-		<div class="form-group">
-		<label for="topic">Topic</label>
-		<input id="topic" type="text" placeholder="Topic (e.g. my.queue)" value="queue://test" />
-		</div>
-
-		<button id="publish">Publish</button>
-
-		<script>
-		const vscode = acquireVsCodeApi();
-
-		document.getElementById('publish').addEventListener('click', () => {
-			const username = document.getElementById('username').value;
-			const password = document.getElementById('password').value;
-			const brokerHost = document.getElementById('brokerHost').value;
-			const topic = document.getElementById('topic').value;
-
-			vscode.postMessage({
-			command: 'publish',
-			username,
-			password,
-			brokerHost,
-			topic
-			});
+		webviewView.webview.postMessage({
+			command: 'loadSavedCredentials',
+			credentials: credsWithPasswords
 		});
-		</script>
-	</body>
-	</html>
-	`;
 	}
 
+	private getHtml(webview: vscode.Webview): string {
+		// ... updated HTML below
+		return `
+		<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8" />
+			<style>
+			/* Your existing styles here */
+			body {
+				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+				background-color: #1e1e1e;
+				color: #cccccc;
+				padding: 20px;
+				margin: 0;
+			}
+			h3 {
+				font-weight: 600;
+				color: #007acc;
+				margin-bottom: 20px;
+			}
+			.form-group {
+				margin-bottom: 15px;
+			}
+			label {
+				display: block;
+				margin-bottom: 5px;
+				font-size: 0.9rem;
+				color: #a0a0a0;
+			}
+			input[type="text"],
+			input[type="password"],
+			select {
+				width: 100%;
+				padding: 10px 12px;
+				border: 1px solid #3c3c3c;
+				border-radius: 4px;
+				background-color: #252526;
+				color: #cccccc;
+				font-size: 1rem;
+				box-sizing: border-box;
+				transition: border-color 0.2s ease;
+			}
+			input[type="text"]:focus,
+			input[type="password"]:focus,
+			select:focus {
+				outline: none;
+				border-color: #007acc;
+				background-color: #1e1e1e;
+			}
+			button {
+				width: 100%;
+				padding: 12px;
+				font-size: 1rem;
+				font-weight: 600;
+				color: white;
+				background-color: #007acc;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+				transition: background-color 0.3s ease;
+				margin-top: 10px;
+			}
+			button:hover {
+				background-color: #005a9e;
+			}
+			button:active {
+				background-color: #003f6f;
+			}
+			#addCredentialForm {
+				display: none;
+				margin-top: 20px;
+				border-top: 1px solid #3c3c3c;
+				padding-top: 20px;
+			}
+			</style>
+		</head>
+		<body>
+			<h3>Publish File via AMQP</h3>
+
+			<button id="showAddCredentials">Add Credentials</button>
+
+			<!-- Add Credentials Form -->
+			<div id="addCredentialForm">
+				<h4>Add New Credentials</h4>
+				<div class="form-group">
+					<label for="newUsername">Username</label>
+					<input id="newUsername" type="text" placeholder="Username" />
+				</div>
+
+				<div class="form-group">
+					<label for="newPassword">Password</label>
+					<input id="newPassword" type="password" placeholder="Password" />
+				</div>
+
+				<div class="form-group">
+					<label for="newBrokerHost">Broker Host</label>
+					<input id="newBrokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+				</div>
+
+				<button id="saveCredential">Save Credentials</button>
+			</div>
+
+			<!-- Main Publish Form -->
+			<div id="publishForm" style="margin-top: 20px;">
+				<div class="form-group">
+					<label for="username">Username</label>
+					<input id="username" type="text" placeholder="Username" />
+				</div>
+
+				<div class="form-group">
+					<label for="password">Password</label>
+					<input id="password" type="password" placeholder="Password" />
+				</div>
+
+				<div class="form-group" id="brokerHostContainer">
+					<label for="brokerHost">Broker Host</label>
+					<input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+				</div>
+
+				<div class="form-group">
+					<label for="topic">Topic</label>
+					<input id="topic" type="text" placeholder="Topic (e.g. my.queue)" value="queue://test" />
+				</div>
+
+				<button id="publish">Publish</button>
+			</div>
+
+			<script>
+				const vscode = acquireVsCodeApi();
+
+				const addCredentialForm = document.getElementById('addCredentialForm');
+				const showAddBtn = document.getElementById('showAddCredentials');
+				const saveCredentialBtn = document.getElementById('saveCredential');
+				const brokerHostContainer = document.getElementById('brokerHostContainer');
+
+				let savedCredentials = [];
+
+				showAddBtn.addEventListener('click', () => {
+					// Toggle form visibility
+					if (addCredentialForm.style.display === 'none') {
+						addCredentialForm.style.display = 'block';
+					} else {
+						addCredentialForm.style.display = 'none';
+					}
+				});
+
+				saveCredentialBtn.addEventListener('click', () => {
+					const newUsername = document.getElementById('newUsername').value.trim();
+					const newPassword = document.getElementById('newPassword').value;
+					const newBrokerHost = document.getElementById('newBrokerHost').value.trim();
+
+					if (!newUsername || !newPassword || !newBrokerHost) {
+						alert('Please fill all fields');
+						return;
+					}
+
+					vscode.postMessage({
+						command: 'addCredential',
+						username: newUsername,
+						password: newPassword,
+						brokerHost: newBrokerHost
+					});
+
+					// Clear form and hide
+					document.getElementById('newUsername').value = '';
+					document.getElementById('newPassword').value = '';
+					document.getElementById('newBrokerHost').value = '';
+					addCredentialForm.style.display = 'none';
+				});
+
+				function createBrokerDropdown(credentials) {
+					const select = document.createElement('select');
+					select.id = 'brokerHost';
+
+					const defaultOption = document.createElement('option');
+					defaultOption.value = '';
+					defaultOption.textContent = '-- Select Broker --';
+					select.appendChild(defaultOption);
+
+					credentials.forEach(({ brokerHost }) => {
+						const option = document.createElement('option');
+						option.value = brokerHost;
+						option.textContent = brokerHost;
+						select.appendChild(option);
+					});
+
+					select.addEventListener('change', () => {
+						const selectedHost = select.value;
+						if (!selectedHost) {
+							// Reset username and password if none selected
+							document.getElementById('username').value = '';
+							document.getElementById('password').value = '';
+							return;
+						}
+						const cred = savedCredentials.find(c => c.brokerHost === selectedHost);
+						if (cred) {
+							document.getElementById('username').value = cred.username;
+							document.getElementById('password').value = cred.password;
+						}
+					});
+
+					return select;
+				}
+
+				// Handle incoming messages from extension
+				window.addEventListener('message', event => {
+					const message = event.data;
+					if (message.command === 'loadSavedCredentials') {
+						savedCredentials = message.credentials;
+
+						if (savedCredentials.length) {
+							// Replace brokerHost input with dropdown
+							const container = brokerHostContainer;
+							container.innerHTML = '<label for="brokerHost">Broker Host</label>';
+							const select = createBrokerDropdown(savedCredentials);
+							container.appendChild(select);
+						} else {
+							// No saved credentials, keep input field
+							brokerHostContainer.innerHTML = \`
+								<label for="brokerHost">Broker Host</label>
+								<input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+							\`;
+						}
+					}
+				});
+
+				document.getElementById('publish').addEventListener('click', () => {
+					const username = document.getElementById('username').value;
+					const password = document.getElementById('password').value;
+					let brokerHostElem = document.getElementById('brokerHost');
+					const brokerHost = brokerHostElem ? brokerHostElem.value : '';
+					const topic = document.getElementById('topic').value;
+
+					if (!username || !password || !brokerHost) {
+						alert('Please fill username, password, and broker host');
+						return;
+					}
+
+					vscode.postMessage({
+						command: 'publish',
+						username,
+						password,
+						brokerHost,
+						topic
+					});
+				});
+			</script>
+		</body>
+		</html>
+		`;
+	}
 }
+
 
 import * as rhea from "rhea";
 
