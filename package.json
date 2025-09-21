@@ -12,6 +12,7 @@
   "engines": {
     "vscode": "^1.104.0"
   },
+  "icon": "media/marketplace-icon.png",
   "categories": [
     "Other"
   ],
@@ -23,7 +24,7 @@
         {
           "id": "qemit-toolbar",
           "title": "qemit",
-          "icon": "media/icon.svg"
+          "icon": "media/sidebar-icon.svg"
         }
       ]
     },

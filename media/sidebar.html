@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 img-src {{cspSource}} https:;
+                 style-src {{cspSource}} 'unsafe-inline';
+                 script-src 'nonce-{{nonce}}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="{{styleUri}}" rel="stylesheet" />
+  <title>QEmit</title>
+</head>
+<body>
+  <button id="showAddCredentials" type="button">Add Credentials</button>
+
+  <div id="addCredentialForm" class="card block" style="display:none;">
+    <h4>Add New Credentials</h4>
+    <div class="form-group">
+      <label for="newUsername">Username</label>
+      <input id="newUsername" type="text" placeholder="Username" />
+    </div>
+    <div class="form-group">
+      <label for="newPassword">Password</label>
+      <input id="newPassword" type="password" placeholder="Password" />
+    </div>
+    <div class="form-group">
+      <label for="newBrokerHost">Broker Host</label>
+      <input id="newBrokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+    </div>
+    <button id="saveCredential" type="button">Save Credentials</button>
+  </div>
+
+  <button id="deleteCredential" class="danger" type="button">Delete Credentials</button>
+
+  <div id="addDivider" class="section-divider" style="display:block;"></div>
+
+  <h3>Publish File via AMQP</h3>
+  
+  <div class="form-group" id="brokerHostContainer">
+    <label for="brokerHost">Broker Host</label>
+    <input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
+  </div>
+
+  <div id="publishForm" class="block">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input id="username" type="text" placeholder="Username" />
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Password" />
+    </div>
+
+    <div class="form-group block">
+      <label for="topic">Topic</label>
+      <input id="topic" type="text" placeholder="Topic (e.g. my.queue)" value="queue://test" />
+    </div>
+
+    <button id="publish" type="button">Publish</button>
+  </div>
+
+  <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="27.930628mm"
+   height="25.762493mm"
+   viewBox="0 0 27.930628 25.762493"
+   version="1.1"
+   id="svg1"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1">
+    <linearGradient
+       id="linearGradient2">
+      <stop
+         style="stop-color:#0069dc;stop-opacity:1;"
+         offset="0"
+         id="stop2" />
+      <stop
+         style="stop-color:#60bcff;stop-opacity:1;"
+         offset="1"
+         id="stop3" />
+    </linearGradient>
+    <rect
+       x="141.0676"
+       y="384.91299"
+       width="378.86722"
+       height="427.23325"
+       id="rect1" />
+    <linearGradient
+       xlink:href="#linearGradient2"
+       id="linearGradient3"
+       x1="28.962553"
+       y1="97.852585"
+       x2="45.523384"
+       y2="97.852585"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1.6865472,0,0,1.6865472,-1.0304519,-52.869766)" />
+  </defs>
+  <g
+     id="layer1"
+     transform="translate(-47.816261,-99.28199)">
+    <rect
+       style="display:none;fill:url(#linearGradient3);fill-opacity:1;stroke:none;stroke-width:1.01193;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4.4;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+       id="rect2"
+       width="27.930628"
+       height="25.762495"
+       x="47.816261"
+       y="99.28199"
+       ry="3.9460647" />
+    <g
+       id="g3"
+       transform="translate(11.657637,-2.4466645)"
+       style="fill:none;fill-opacity:1;stroke:#0c0c0c;stroke-opacity:1">
+      <text
+         xml:space="preserve"
+         transform="scale(0.26458333)"
+         id="text1"
+         style="font-size:85.3333px;text-align:start;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect1);fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.00157;stroke-dasharray:none;stroke-opacity:1"><tspan
+           x="141.06836"
+           y="463.238"
+           id="tspan3"><tspan
+             style="font-family:'.Keyboard';-inkscape-font-specification:'.Keyboard'"
+             id="tspan2">Q</tspan></tspan></text>
+      <path
+         style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.26753;stroke-linecap:butt;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+         d="m 54.601908,111.36549 c 0.75972,2.37612 0.548692,4.45097 0,6.42103"
+         id="path2" />
+      <path
+         style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.36706;stroke-linecap:butt;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+         d="m 56.621253,110.1122 c 1.336378,3.59419 0.841293,6.55745 0,9.35411"
+         id="path2-5" />
+      <path
+         style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.457;stroke-linecap:butt;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+         d="m 58.910088,108.0476 c 1.621661,5.66844 0.861289,9.91896 0,13.74777"
+         id="path2-5-6" />
+    </g>
+  </g>
+</svg>
