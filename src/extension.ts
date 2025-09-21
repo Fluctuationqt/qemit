@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import QEmitSidebarProvider from './sidebar'
+import QEmitSidebarProvider from './sidebar';
 
 
 export function activate(context: vscode.ExtensionContext) {
