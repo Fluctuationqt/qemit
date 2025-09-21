@@ -61,3 +61,5 @@ button.danger:active { background:#7f1d13; }
 }
 
 .block { margin-top:18px; }
+
+.hidden { display: none !important; }

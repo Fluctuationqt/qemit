@@ -1,146 +1,166 @@
 const vscode = acquireVsCodeApi();
 
-const addCredentialForm = document.getElementById('addCredentialForm');
-const showAddBtn = document.getElementById('showAddCredentials');
-const saveCredentialBtn = document.getElementById('saveCredential');
-const brokerHostContainer = document.getElementById('brokerHostContainer');
-const deleteBtn = document.getElementById('deleteCredential');
+// helpers
+const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
+let persisted = vscode.getState?.() || {};
 
-let savedCredentials = [];
-const persisted = vscode.getState() || {};
+// cache elements
+const addForm = $('addCredentialForm');
+const toggleAddBtn = $('showAddCredentials');
+const deleteBtn = $('deleteCredential');
+
+const brokerSelect = /** @type {HTMLSelectElement} */ ($('brokerHostSelect'));
+const brokerInput  = /** @type {HTMLInputElement} */ ($('brokerHostText'));
+
+const publishForm = $('publishForm');
+const publishBtn  = /** @type {HTMLButtonElement} */ ($('publish'));
+
+const usernameEl = /** @type {HTMLInputElement} */ ($('username'));
+const passwordEl = /** @type {HTMLInputElement} */ ($('password'));
+const topicEl    = /** @type {HTMLInputElement} */ ($('topic'));
+
+const newUserEl  = /** @type {HTMLInputElement} */ ($('newUsername'));
+const newPassEl  = /** @type {HTMLInputElement} */ ($('newPassword'));
+const newHostEl  = /** @type {HTMLInputElement} */ ($('newBrokerHost'));
+
+// state
+let credentials = /** @type {{username:string,password:string,brokerHost:string}[]} */ (persisted.credentials || []);
 let selectedBrokerHost = persisted.selectedBrokerHost || '';
 
-function renderBrokerHostInput() {
-    brokerHostContainer.innerHTML = `
-    <label for="brokerHost">Broker Host</label>
-    <input id="brokerHost" type="text" placeholder="Broker Host (e.g. amqp://localhost:5672)" />
-  `;
+// util: persist once
+function persist(partial) {
+  persisted = { ...(persisted || {}), ...partial };
+  vscode.setState(persisted);
 }
 
-function populateCredFieldsFrom(host) {
-    const cred = savedCredentials.find(c => c.brokerHost === host);
-    document.getElementById('username').value = cred?.username || '';
-    document.getElementById('password').value = cred?.password || '';
+// UI toggles
+function show(el)  { el.classList.remove('hidden'); }
+function hide(el)  { el.classList.add('hidden');  }
+
+// fill username/password from selected broker
+function populateFrom(host) {
+  const cred = credentials.find(c => c.brokerHost === host);
+  usernameEl.value = cred?.username || '';
+  passwordEl.value = cred?.password || '';
 }
 
-function createBrokerDropdown(credentials) {
-    const select = document.createElement('select');
-    select.id = 'brokerHost';
+// render broker UI depending on saved credentials
+function renderBrokerUI() {
+  if (credentials.length > 0) {
+    // show select, hide free-text
+    show(brokerSelect);
+    hide(brokerInput);
 
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = '-- Select Broker --';
-    select.appendChild(defaultOption);
+    // (re)build options efficiently
+    const frag = document.createDocumentFragment();
+    // keep the first placeholder
+    brokerSelect.length = 1;
+    for (const { brokerHost } of credentials) {
+      const opt = document.createElement('option');
+      opt.value = brokerHost;
+      opt.textContent = brokerHost;
+      frag.appendChild(opt);
+    }
+    brokerSelect.appendChild(frag);
 
-    credentials.forEach(({ brokerHost }) => {
-        const option = document.createElement('option');
-        option.value = brokerHost;
-        option.textContent = brokerHost;
-        select.appendChild(option);
-    });
-
+    // restore selection if still valid
     if (selectedBrokerHost && credentials.some(c => c.brokerHost === selectedBrokerHost)) {
-        select.value = selectedBrokerHost;
-        populateCredFieldsFrom(selectedBrokerHost);
-    }
-
-    select.addEventListener('change', () => {
-        selectedBrokerHost = select.value;
-        vscode.setState({ ...(vscode.getState() || {}), selectedBrokerHost });
-        if (!selectedBrokerHost) {
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
-            return;
-        }
-        populateCredFieldsFrom(selectedBrokerHost);
-    });
-
-    return select;
-}
-
-function renderBrokerSelectorFrom(creds) {
-    if (Array.isArray(creds) && creds.length > 0) {
-        brokerHostContainer.innerHTML = '<label for="brokerHost">Broker Host</label>';
-        brokerHostContainer.appendChild(createBrokerDropdown(creds));
+      brokerSelect.value = selectedBrokerHost;
+      populateFrom(selectedBrokerHost);
     } else {
-        selectedBrokerHost = '';
-        vscode.setState({ ...(vscode.getState() || {}), selectedBrokerHost });
-        renderBrokerHostInput();
+      brokerSelect.value = '';
+      selectedBrokerHost = '';
+      populateFrom('');
     }
+  } else {
+    // no saved creds → free text input
+    hide(brokerSelect);
+    show(brokerInput);
+    selectedBrokerHost = '';
+  }
+  updatePublishEnabled();
 }
 
-// UI events
-showAddBtn.addEventListener('click', () => {
-    const isHidden = getComputedStyle(addCredentialForm).display === 'none';
-    addCredentialForm.style.display = isHidden ? 'block' : 'none';
+// computed: can publish?
+function canPublish() {
+  const host = credentials.length ? brokerSelect.value : brokerInput.value.trim();
+  return Boolean(usernameEl.value && passwordEl.value && host);
+}
+function updatePublishEnabled() {
+  publishBtn.disabled = !canPublish();
+}
+
+// ============== Event wiring ==============
+toggleAddBtn.addEventListener('click', () => {
+  const nowHidden = addForm.classList.toggle('hidden');
+  toggleAddBtn.textContent = nowHidden ? 'Add Credentials' : 'Close';
 });
 
-saveCredentialBtn.addEventListener('click', () => {
-    const newUsername = document.getElementById('newUsername').value.trim();
-    const newPassword = document.getElementById('newPassword').value;
-    const newBrokerHost = document.getElementById('newBrokerHost').value.trim();
-    if (!newUsername || !newPassword || !newBrokerHost) {
-        return;
-    }
+addForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const username = newUserEl.value.trim();
+  const password = newPassEl.value;
+  const brokerHost = newHostEl.value.trim();
+  if (!username || !password || !brokerHost) return;
 
-    vscode.postMessage({
-        command: 'addCredential',
-        username: newUsername,
-        password: newPassword,
-        brokerHost: newBrokerHost
-    });
+  vscode.postMessage({ command: 'addCredential', username, password, brokerHost });
 
-    document.getElementById('newUsername').value = '';
-    document.getElementById('newPassword').value = '';
-    document.getElementById('newBrokerHost').value = '';
-    addCredentialForm.style.display = 'none';
+  newUserEl.value = '';
+  newPassEl.value = '';
+  newHostEl.value = '';
+  addForm.classList.add('hidden');
+  toggleAddBtn.textContent = 'Add Credentials';
 });
 
 deleteBtn.addEventListener('click', () => {
-    const select = document.getElementById('brokerHost');
-    const selectedHost = select && select.tagName === 'SELECT' ? select.value : '';
-    if (!selectedHost) {
-        return;
-    }
-    vscode.postMessage({ command: 'deleteCredential', brokerHost: selectedHost });
+  if (!credentials.length) return;
+  const host = brokerSelect.value;
+  if (!host) return;
+  vscode.postMessage({ command: 'deleteCredential', brokerHost: host });
 });
 
-document.getElementById('publish').addEventListener('click', () => {
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const brokerHostElem = document.getElementById('brokerHost');
-    const brokerHost = brokerHostElem ? brokerHostElem.value : '';
-    const topic = document.getElementById('topic').value;
-    if (!username || !password || !brokerHost) {
-        return;
-    }
-    vscode.postMessage({ command: 'publish', username, password, brokerHost, topic });
+// react to selection change
+brokerSelect.addEventListener('change', () => {
+  selectedBrokerHost = brokerSelect.value;
+  persist({ selectedBrokerHost });
+  populateFrom(selectedBrokerHost);
+  updatePublishEnabled();
 });
 
-// State restoration + message handling
-const state = vscode.getState() || {};
-if (Array.isArray(state.credentials)) {
-    savedCredentials = state.credentials;
-    renderBrokerSelectorFrom(savedCredentials);
-} else {
-    renderBrokerHostInput();
-}
+// enable/disable Publish live
+publishForm.addEventListener('input', updatePublishEnabled);
 
-window.addEventListener('message', event => {
-    const message = event.data;
-    if (message.command === 'loadSavedCredentials') {
-        savedCredentials = Array.isArray(message.credentials) ? message.credentials : [];
-        if (!savedCredentials.find(c => c.brokerHost === selectedBrokerHost)) {
-            selectedBrokerHost = '';
-        }
-        vscode.setState({ credentials: savedCredentials, selectedBrokerHost });
-        renderBrokerSelectorFrom(savedCredentials);
+publishForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const brokerHost = credentials.length ? brokerSelect.value : brokerInput.value.trim();
+  if (!usernameEl.value || !passwordEl.value || !brokerHost) return;
 
-        const select = document.getElementById('brokerHost');
-        if (select && select.tagName === 'SELECT' && !savedCredentials.find(c => c.brokerHost === select.value)) {
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
-            select.value = '';
-        }
+  vscode.postMessage({
+    command: 'publish',
+    username: usernameEl.value,
+    password: passwordEl.value,
+    brokerHost,
+    topic: topicEl.value
+  });
+});
+
+// Initial render using persisted state
+renderBrokerUI();
+
+// ============== Message pump from extension ==============
+window.addEventListener('message', (event) => {
+  const message = event.data;
+  if (message?.command === 'loadSavedCredentials') {
+    credentials = Array.isArray(message.credentials) ? message.credentials : [];
+    // reset selection if removed
+    if (!credentials.find(c => c.brokerHost === selectedBrokerHost)) {
+      selectedBrokerHost = '';
+      persist({ selectedBrokerHost });
+      usernameEl.value = '';
+      passwordEl.value = '';
     }
+    // persist the new list once
+    persist({ credentials });
+    renderBrokerUI();
+  }
 });
